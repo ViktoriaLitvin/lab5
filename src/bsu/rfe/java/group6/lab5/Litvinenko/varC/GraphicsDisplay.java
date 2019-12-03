@@ -1,404 +1,408 @@
 package bsu.rfe.java.group6.lab5.Litvinenko.varC;
 
-import javax.swing.*;
-import java.awt.*;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Cursor;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionListener;
 import java.awt.font.FontRenderContext;
-import java.awt.geom.*;
+import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
+import java.util.ArrayList;
+import java.util.Iterator;
+import javax.swing.JPanel;
 
 public class GraphicsDisplay extends JPanel {
-
-    // Список координат точек для построения графика
-    private Double[][] graphicsData;
-
-    // Флаговые переменные, задающие правила отображения графика
-    private boolean showAxis = true;
-    private boolean showAxisGrid = true;
-    private boolean showMarkers = false;
-    private boolean turnAxis = false;
-    private boolean isTurned = false;
-
-    // Границы диапазона пространства, подлежащего отображению
+    private ArrayList<Double[]> graphicsData;
+    private ArrayList originalData;
+    private int selectedMarker = -1;
     private double minX;
     private double maxX;
     private double minY;
     private double maxY;
-
-    // Используемый масштаб отображения
-    private double scale;
-
-    // Различные стили черчения линий
-    private BasicStroke graphicsStroke;
+    private double[][] viewport = new double[2][2];
+    private ArrayList undoHistory = new ArrayList(5);
+    private double scaleX;
+    private double scaleY;
     private BasicStroke axisStroke;
-    private BasicStroke axisGridStroke;
+    private BasicStroke gridStroke;
     private BasicStroke markerStroke;
-
-    // Различные шрифты отображения надписей
+    private BasicStroke selectionStroke;
     private Font axisFont;
-
-    private final Double littleSteps = 10.0;
-    private final int bigSteps = 10;
+    private Font labelsFont;
+    private static DecimalFormat formatter = (DecimalFormat)NumberFormat.getInstance();
+    private boolean scaleMode = false;
+    private boolean changeMode = false;
+    private double[] originalPoint = new double[2];
+    private java.awt.geom.Rectangle2D.Double selectionRect = new java.awt.geom.Rectangle2D.Double();
 
     public GraphicsDisplay() {
-        setBackground(Color.WHITE);
-        // перо для графика
-        graphicsStroke = new BasicStroke(3.0f, BasicStroke.CAP_BUTT,
-                //BasicStroke.JOIN_ROUND, 10.0f, new float[] {4, 1, 1, 1, 2, 1, 1, 1}, 0.0f);
-                BasicStroke.JOIN_ROUND, 10.0f, new float[] {32, 8, 8, 8, 16, 8, 8, 8}, 0.0f);
-        // перо для осей координат
-        axisStroke = new BasicStroke(2.0f, BasicStroke.CAP_BUTT,
-                BasicStroke.JOIN_MITER, 10.0f, null, 0.0f);
-        // перо для координатной сетки
-        axisGridStroke = new BasicStroke(1.0f, BasicStroke.CAP_BUTT,
-                BasicStroke.JOIN_MITER, 10.0f, null, 0.0f);
-        // перо для контуров маркеров
-        markerStroke = new BasicStroke(1.0f, BasicStroke.CAP_BUTT,
-                BasicStroke.JOIN_MITER, 10.0f, null, 0.0f);
-        // шрифт для подписей осей координат
-        axisFont = new Font("Serif", Font.BOLD, 36);
+        this.setBackground(Color.WHITE);
+        this.axisStroke = new BasicStroke(2.0F, 0, 0, 10.0F, (float[])null, 0.0F);
+        this.gridStroke = new BasicStroke(1.0F, 0, 0, 10.0F, new float[]{4.0F, 4.0F}, 0.0F);
+        this.markerStroke = new BasicStroke(1.0F, 0, 0, 10.0F, (float[])null, 0.0F);
+        this.selectionStroke = new BasicStroke(1.0F, 0, 0, 10.0F, new float[]{10.0F, 10.0F}, 0.0F);
+        this.axisFont = new Font("Serif", 1, 36);
+        this.labelsFont = new Font("Serif", 0, 10);
+        formatter.setMaximumFractionDigits(5);
+        this.addMouseListener(new GraphicsDisplay.MouseHandler());
+        this.addMouseMotionListener(new GraphicsDisplay.MouseMotionHandler());
     }
 
-    public void setShowAxis(boolean showAxis) {
-        this.showAxis = showAxis;
-        repaint();
-    }
-
-    public void setShowMarkers(boolean showMarkers) {
-        this.showMarkers = showMarkers;
-        repaint();
-    }
-
-    public void showGraphics(Double[][] graphicsData) {
-        isTurned = false;
+    public void displayGraphics(ArrayList<Double[]> graphicsData) {
         this.graphicsData = graphicsData;
-        repaint();
+        this.originalData = new ArrayList(graphicsData.size());
+        Iterator var3 = graphicsData.iterator();
+
+        while(var3.hasNext()) {
+            Double[] point = (Double[])var3.next();
+            Double[] newPoint = new Double[]{new Double(point[0]), new Double(point[1])};
+            this.originalData.add(newPoint);
+        }
+
+        this.minX = ((Double[])graphicsData.get(0))[0];
+        this.maxX = ((Double[])graphicsData.get(graphicsData.size() - 1))[0];
+        this.minY = ((Double[])graphicsData.get(0))[1];
+        this.maxY = this.minY;
+
+        for(int i = 1; i < graphicsData.size(); ++i) {
+            if (((Double[])graphicsData.get(i))[1] < this.minY) {
+                this.minY = ((Double[])graphicsData.get(i))[1];
+            }
+
+            if (((Double[])graphicsData.get(i))[1] > this.maxY) {
+                this.maxY = ((Double[])graphicsData.get(i))[1];
+            }
+        }
+
+        this.zoomToRegion(this.minX, this.maxY, this.maxX, this.minY);
     }
 
-    public void setTurn(boolean turnAxis) {
-        this.turnAxis = turnAxis;
-        repaint();
-    }
-
-    public void setShowAxisGrid(boolean showAxisGrid) {
-        this.showAxisGrid = showAxisGrid;
-        repaint();
-    }
-
-    protected Point2D.Double xyToPoint(double x, double y) {
-        calculateMaxMin();
-        double deltaX = x - minX;
-        double deltaY = maxY - y;
-        return new Point2D.Double(deltaX * scale, deltaY * scale);
-    }
-
-    protected void paintGraphics(Graphics2D canvas) {
-        canvas.setStroke(graphicsStroke);
-        canvas.setColor(Color.RED);
-        GeneralPath graphics = new GeneralPath();
-        for (int i = 0; i < graphicsData.length; i++) {
-            Point2D.Double point = xyToPoint(graphicsData[i][0], graphicsData[i][1]);
-            if (i > 0) {
-                graphics.lineTo(point.getX(), point.getY());
-            } else {
-                graphics.moveTo(point.getX(), point.getY());
-            }
-        }
-        canvas.draw(graphics);
-    }
-
-    protected void paintAxis(Graphics2D canvas) {
-        canvas.setStroke(axisStroke);
-        canvas.setColor(Color.BLACK);
-        canvas.setPaint(Color.BLACK);
-        canvas.setFont(axisFont);
-        FontRenderContext context = canvas.getFontRenderContext();
-        calculateMaxMin();
-        if (isTurned) {
-            if (minY <= 0.0 && maxY >= 0.0) {
-                canvas.draw(new Line2D.Double(xyToPoint(minX, 0), xyToPoint(maxX, 0)));
-                GeneralPath arrow = new GeneralPath();
-                Point2D.Double lineEnd = xyToPoint(minX, 0);
-                arrow.moveTo(lineEnd.getX(), lineEnd.getY());
-                arrow.lineTo(arrow.getCurrentPoint().getX() + 20, arrow.getCurrentPoint().getY() - 5);
-                arrow.lineTo(arrow.getCurrentPoint().getX(), arrow.getCurrentPoint().getY() + 10);
-                arrow.closePath();
-                canvas.draw(arrow);
-                canvas.fill(arrow);
-                Rectangle2D bounds = axisFont.getStringBounds("y", context);
-                Point2D.Double labelPos = xyToPoint(maxX, 0);
-                canvas.drawString("y", (float) (bounds.getWidth() + 10), (float) (labelPos.getY() + bounds.getY()));
-            }
-            if (minX <= 0.0 && maxX >= 0.0) {
-                canvas.draw(new Line2D.Double(xyToPoint(0, maxY), xyToPoint(0, minY)));
-                GeneralPath arrow = new GeneralPath();
-                Point2D.Double lineEnd = xyToPoint(0, maxY);
-                arrow.moveTo(lineEnd.getX(), lineEnd.getY());
-                arrow.lineTo(arrow.getCurrentPoint().getX() + 5, arrow.getCurrentPoint().getY() + 20);
-                arrow.lineTo(arrow.getCurrentPoint().getX() - 10, arrow.getCurrentPoint().getY());
-                arrow.closePath();
-                canvas.draw(arrow);
-                canvas.fill(arrow);
-                Rectangle2D bounds = axisFont.getStringBounds("x", context);
-                Point2D.Double labelPos = xyToPoint(0, maxY);
-                canvas.drawString("x", (float) labelPos.getX() + 10, (float) (labelPos.getY() - bounds.getY()));
-            }
-        }
-        else {
-            if (minX <= 0.0 && maxX >= 0.0) {
-                canvas.draw(new Line2D.Double(xyToPoint(0, maxY), xyToPoint(0, minY)));
-                GeneralPath arrow = new GeneralPath();
-                Point2D.Double lineEnd = xyToPoint(0, maxY);
-                arrow.moveTo(lineEnd.getX(), lineEnd.getY());
-                arrow.lineTo(arrow.getCurrentPoint().getX() + 5, arrow.getCurrentPoint().getY() + 20);
-                arrow.lineTo(arrow.getCurrentPoint().getX() - 10, arrow.getCurrentPoint().getY());
-                arrow.closePath();
-                canvas.draw(arrow);
-                canvas.fill(arrow);
-                Rectangle2D bounds = axisFont.getStringBounds("y", context);
-                Point2D.Double labelPos = xyToPoint(0, maxY);
-                canvas.drawString("y", (float) labelPos.getX() + 10, (float) (labelPos.getY() - bounds.getY()));
-            }
-            if (minY <= 0.0 && maxY >= 0.0) {
-                canvas.draw(new Line2D.Double(xyToPoint(minX, 0), xyToPoint(maxX, 0)));
-                GeneralPath arrow = new GeneralPath();
-                Point2D.Double lineEnd = xyToPoint(maxX, 0);
-                arrow.moveTo(lineEnd.getX(), lineEnd.getY());
-                arrow.lineTo(arrow.getCurrentPoint().getX() - 20, arrow.getCurrentPoint().getY() - 5);
-                arrow.lineTo(arrow.getCurrentPoint().getX(), arrow.getCurrentPoint().getY() + 10);
-                arrow.closePath();
-                canvas.draw(arrow);
-                canvas.fill(arrow);
-                Rectangle2D bounds = axisFont.getStringBounds("x", context);
-                Point2D.Double labelPos = xyToPoint(maxX, 0);
-                canvas.drawString("x", (float) (labelPos.getX() - bounds.getWidth() - 10), (float) (labelPos.getY() + bounds.getY()));
-            }
-        }
-    }
-
-    protected void paintAxisGrid(Graphics2D canvas) {
-        canvas.setStroke(axisGridStroke);
-        canvas.setColor(Color.BLACK);
-        canvas.setPaint(Color.BLACK);
-        canvas.setFont(axisFont);
-        FontRenderContext context = canvas.getFontRenderContext();
-        calculateMaxMin();
-        Double doubleBigStep = Math.max(maxX - minX, maxY - minY);
-        int intBigStep = Integer.parseInt(doubleBigStep.toString().split("\\.")[0]) / bigSteps;
-        Double doubleLittleStep = (intBigStep / littleSteps);
-        // вертикальная ось неизменна
-        Double fromDouble = Math.abs(minY) / intBigStep;
-        int fromInt = - Integer.parseInt(fromDouble.toString().split("\\.")[0]) * intBigStep;
-        Double toDouble = Math.abs(maxY) / intBigStep;
-        int toInt = Integer.parseInt(toDouble.toString().split("\\.")[0]) * intBigStep;
-        for (int i = fromInt; i <= toInt; i += intBigStep) {
-            if (i == 0) {
-                continue;
-            }
-            Point2D.Double from = xyToPoint(minX, i);
-            Point2D.Double to = xyToPoint(maxX, i);
-            Line2D.Double line = new Line2D.Double(from, to);
-            canvas.draw(line);
-            String numberString = Integer.toString(i);
-            Rectangle2D bounds = axisFont.getStringBounds(numberString, context);
-            Point2D.Double labelPos = xyToPoint(0, i);
-            canvas.drawString(numberString, (float) (labelPos.getX() - bounds.getX()), (float) labelPos.getY() - 10);
-        }
-        int count = 0;
-        for (Double i = fromInt + doubleLittleStep; i < toInt; i += doubleLittleStep) {
-            Point2D.Double from = xyToPoint(0, i);
-            Point2D.Double to = xyToPoint(0, i);
-            count++;
-            if (count == 5) {
-                from.setLocation(from.getX() - 10, from.getY());
-                to.setLocation(to.getX() + 10, to.getY());
-                count = 0;
-            }
-            else {
-                from.setLocation(from.getX() - 5, from.getY());
-                to.setLocation(to.getX() + 5, to.getY());
-            }
-            Line2D.Double line = new Line2D.Double(from, to);
-            canvas.draw(line);
-        }
-        if (isTurned) {
-            fromDouble = Math.abs(minX) / intBigStep;
-            fromInt = -  Integer.parseInt(fromDouble.toString().split("\\.")[0]) * intBigStep;
-            toDouble = Math.abs(maxX) / intBigStep;
-            toInt = Integer.parseInt(toDouble.toString().split("\\.")[0]) * intBigStep;
-            for (int i = fromInt; i <= toInt; i += intBigStep) {
-                Point2D.Double from = xyToPoint(i, minY);
-                Point2D.Double to = xyToPoint(i,maxY);
-                Line2D.Double line = new Line2D.Double(from, to);
-                canvas.draw(line);
-                String numberString = Integer.toString(-i);
-                Rectangle2D bounds = axisFont.getStringBounds(numberString, context);
-                Point2D.Double labelPos = xyToPoint(i, 0);
-                canvas.drawString(numberString, (float) labelPos.getX() + 10, (float) (labelPos.getY() + bounds.getY()));
-            }
-        } else {
-            fromDouble = Math.abs(minX) / intBigStep;
-            fromInt = -  Integer.parseInt(fromDouble.toString().split("\\.")[0]) * intBigStep;
-            toDouble = Math.abs(maxX) / intBigStep;
-            toInt = Integer.parseInt(toDouble.toString().split("\\.")[0]) * intBigStep;
-            for (int i = fromInt; i <= toInt; i += intBigStep) {
-                Point2D.Double from = xyToPoint(i, minY);
-                Point2D.Double to = xyToPoint(i,maxY);
-                Line2D.Double line = new Line2D.Double(from, to);
-                canvas.draw(line);
-                String numberString = Integer.toString(i);
-                Rectangle2D bounds = axisFont.getStringBounds(numberString, context);
-                Point2D.Double labelPos = xyToPoint(i, 0);
-                canvas.drawString(numberString, (float) labelPos.getX() + 10, (float) (labelPos.getY() + bounds.getY()));
-            }
-        }
-        count = 0;
-        for (Double i = fromInt + doubleLittleStep; i < toInt; i += doubleLittleStep) {
-            Point2D.Double from = xyToPoint(i, 0);
-            Point2D.Double to = xyToPoint(i, 0);
-            count++;
-            if (count == 5) {
-                from.setLocation(from.getX(), from.getY() - 10);
-                to.setLocation(to.getX(), to.getY() + 10);
-                count = 0;
-            }
-            else {
-                from.setLocation(from.getX(), from.getY() - 5);
-                to.setLocation(to.getX(), to.getY() + 5);
-            }
-            Line2D.Double line = new Line2D.Double(from, to);
-            canvas.draw(line);
-        }
-    }
-
-    protected void turnAxis(Graphics2D canvas) {
-        if (!isTurned) {
-            isTurned = true;
-            for (Double[] pair : graphicsData) {
-                Double x = -pair[1];
-                Double y = pair[0];
-                pair[0] = x;
-                pair[1] = y;
-            }
-        }
-        else
-        {
-            isTurned = false;
-            for (Double[] pair : graphicsData) {
-                Double x = pair[1];
-                Double y = - pair[0];
-                pair[0] = x;
-                pair[1] = y;
-            }
-        }
-    }
-
-    protected void paintMarkers(Graphics2D canvas) {
-        canvas.setStroke(markerStroke);
-        canvas.setColor(Color.RED);
-        canvas.setPaint(Color.RED);
-        for (Double[] point : graphicsData) {
-            GeneralPath arrow = new GeneralPath();
-            Point2D.Double center = xyToPoint(point[0], point[1]);
-            arrow.moveTo(center.getX(), center.getY());
-            // left
-            arrow.lineTo(arrow.getCurrentPoint().getX() - 5, arrow.getCurrentPoint().getY());
-            arrow.lineTo(arrow.getCurrentPoint().getX(), arrow.getCurrentPoint().getY() - 2);
-            arrow.lineTo(arrow.getCurrentPoint().getX(), arrow.getCurrentPoint().getY() + 5);
-            arrow.lineTo(arrow.getCurrentPoint().getX(), arrow.getCurrentPoint().getY() - 3);
-            // right
-            arrow.lineTo(arrow.getCurrentPoint().getX() + 10, arrow.getCurrentPoint().getY());
-            arrow.lineTo(arrow.getCurrentPoint().getX(), arrow.getCurrentPoint().getY() - 2);
-            arrow.lineTo(arrow.getCurrentPoint().getX(), arrow.getCurrentPoint().getY() + 5);
-            arrow.lineTo(arrow.getCurrentPoint().getX(), arrow.getCurrentPoint().getY() - 3);
-            // up
-            arrow.lineTo(arrow.getCurrentPoint().getX() - 5, arrow.getCurrentPoint().getY());
-            arrow.lineTo(arrow.getCurrentPoint().getX(), arrow.getCurrentPoint().getY() - 5);
-            arrow.lineTo(arrow.getCurrentPoint().getX() - 2, arrow.getCurrentPoint().getY());
-            arrow.lineTo(arrow.getCurrentPoint().getX() + 5, arrow.getCurrentPoint().getY());
-            arrow.lineTo(arrow.getCurrentPoint().getX() - 3, arrow.getCurrentPoint().getY());
-            // down
-            arrow.lineTo(arrow.getCurrentPoint().getX(), arrow.getCurrentPoint().getY() + 10);
-            arrow.lineTo(arrow.getCurrentPoint().getX() - 2, arrow.getCurrentPoint().getY());
-            arrow.lineTo(arrow.getCurrentPoint().getX() + 5, arrow.getCurrentPoint().getY());
-            arrow.lineTo(arrow.getCurrentPoint().getX() - 3, arrow.getCurrentPoint().getY());
-            arrow.closePath();
-            //
-            Double number = point[1];
-            if (isTurned) number = point[0];
-            int divNumber = Integer.parseInt(number.toString().split("\\.")[0]);
-            boolean met = true;
-            while (divNumber != 0) {
-                int numeral = divNumber % 10;
-                divNumber /= 10;
-                if (numeral % 2 != 0) {
-                    met = false;
-                    break;
-                }
-            }
-            if (met) {
-                canvas.setColor(Color.BLUE);
-                canvas.setPaint(Color.BLUE);
-                canvas.draw(arrow);
-                canvas.fill(arrow);
-                canvas.setColor(Color.RED);
-                canvas.setPaint(Color.RED);
-                continue;
-            }
-            canvas.draw(arrow);
-            canvas.fill(arrow);
-        }
+    public void zoomToRegion(double x1, double y1, double x2, double y2) {
+        this.viewport[0][0] = x1;
+        this.viewport[0][1] = y1;
+        this.viewport[1][0] = x2;
+        this.viewport[1][1] = y2;
+        this.repaint();
     }
 
     public void paintComponent(Graphics g) {
         super.paintComponent(g);
-        if (graphicsData == null || graphicsData.length == 0) return;
-        calculateMaxMin();
-        Graphics2D canvas = (Graphics2D) g;
-        Stroke oldStroke = canvas.getStroke();
-        Color oldColor = canvas.getColor();
-        Paint oldPaint = canvas.getPaint();
-        Font oldFont = canvas.getFont();
-        if (turnAxis) turnAxis(canvas);
-        if (showAxis) paintAxis(canvas);
-        if (showAxisGrid) paintAxisGrid(canvas);
-        paintGraphics(canvas);
-        if (showMarkers) paintMarkers(canvas);
-        canvas.setFont(oldFont);
-        canvas.setPaint(oldPaint);
-        canvas.setColor(oldColor);
-        canvas.setStroke(oldStroke);
+        this.scaleX = this.getSize().getWidth() / (this.viewport[1][0] - this.viewport[0][0]);
+        this.scaleY = this.getSize().getHeight() / (this.viewport[0][1] - this.viewport[1][1]);
+        if (this.graphicsData != null && this.graphicsData.size() != 0) {
+            Graphics2D canvas = (Graphics2D)g;
+            this.paintGrid(canvas);
+            this.paintAxis(canvas);
+            this.paintGraphics(canvas);
+            this.paintMarkers(canvas);
+            this.paintLabels(canvas);
+            this.paintSelection(canvas);
+        }
     }
 
-    public void calculateMaxMin() {
-        minX = graphicsData[0][0];
-        maxX = minX;
-        maxY = graphicsData[0][1];
-        minY = maxY;
-        for (int i = 1; i < graphicsData.length; i++) {
-            if (graphicsData[i][1] < minY) {
-                minY = graphicsData[i][1];
-            }
-            if (graphicsData[i][1] > maxY) {
-                maxY = graphicsData[i][1];
-            }
-            if (graphicsData[i][0] < minX) {
-                minX = graphicsData[i][0];
-            }
-            if (graphicsData[i][0] > maxX) {
-                maxX = graphicsData[i][0];
+    private void paintSelection(Graphics2D canvas) {
+        if (this.scaleMode) {
+            canvas.setStroke(this.selectionStroke);
+            canvas.setColor(Color.BLACK);
+            canvas.draw(this.selectionRect);
+        }
+    }
+
+    private void paintGraphics(Graphics2D canvas) {
+        canvas.setStroke(this.markerStroke);
+        canvas.setColor(Color.RED);
+        Double currentX = null;
+        Double currentY = null;
+        Iterator var5 = this.graphicsData.iterator();
+
+        while(var5.hasNext()) {
+            Double[] point = (Double[])var5.next();
+            if (point[0] >= this.viewport[0][0] && point[1] <= this.viewport[0][1] && point[0] <= this.viewport[1][0] && point[1] >= this.viewport[1][1]) {
+                if (currentX != null && currentY != null) {
+                    canvas.draw(new java.awt.geom.Line2D.Double(this.translateXYtoPoint(currentX, currentY), this.translateXYtoPoint(point[0], point[1])));
+                }
+
+                currentX = point[0];
+                currentY = point[1];
             }
         }
-        double scaleX = getSize().getWidth() / (maxX - minX);
-        double scaleY = getSize().getHeight() / (maxY - minY);
-        scale = Math.min(scaleX, scaleY);
-        if (scale == scaleX) {
-            double yIncrement = (getSize().getHeight() / scale - (maxY - minY)) / 2;
-            maxY += yIncrement;
-            minY -= yIncrement;
+
+    }
+
+    private void paintMarkers(Graphics2D canvas) {
+        canvas.setStroke(this.markerStroke);
+        canvas.setColor(Color.RED);
+        canvas.setPaint(Color.RED);
+        java.awt.geom.Ellipse2D.Double lastMarker = null;
+        int i = -1;
+        Iterator var5 = this.graphicsData.iterator();
+
+        while(var5.hasNext()) {
+            Double[] point = (Double[])var5.next();
+            ++i;
+            if (point[0] >= this.viewport[0][0] && point[1] <= this.viewport[0][1] && point[0] <= this.viewport[1][0] && point[1] >= this.viewport[1][1]) {
+                byte radius;
+                if (i == this.selectedMarker) {
+                    radius = 6;
+                } else {
+                    radius = 3;
+                }
+
+                java.awt.geom.Ellipse2D.Double marker = new java.awt.geom.Ellipse2D.Double();
+                Point2D center = this.translateXYtoPoint(point[0], point[1]);
+                Point2D corner = new java.awt.geom.Point2D.Double(center.getX() + (double)radius, center.getY() + (double)radius);
+                marker.setFrameFromCenter(center, corner);
+                if (i == this.selectedMarker) {
+                    lastMarker = marker;
+                } else {
+                    canvas.draw(marker);
+                    canvas.fill(marker);
+                }
+            }
         }
-        if (scale == scaleY) {
-            double xIncrement = (getSize().getWidth() / scale - (maxX - minX)) / 2;
-            maxX += xIncrement;
-            minX -= xIncrement;
+
+        if (lastMarker != null) {
+            canvas.setColor(Color.BLUE);
+            canvas.setPaint(Color.BLUE);
+            canvas.draw(lastMarker);
+            canvas.fill(lastMarker);
+        }
+
+    }
+
+    private void paintLabels(Graphics2D canvas) {
+        canvas.setColor(Color.BLACK);
+        canvas.setFont(this.labelsFont);
+        FontRenderContext context = canvas.getFontRenderContext();
+        double labelYPos;
+        if (this.viewport[1][1] < 0.0D && this.viewport[0][1] > 0.0D) {
+            labelYPos = 0.0D;
+        } else {
+            labelYPos = this.viewport[1][1];
+        }
+
+        double labelXPos;
+        if (this.viewport[0][0] < 0.0D && this.viewport[1][0] > 0.0D) {
+            labelXPos = 0.0D;
+        } else {
+            labelXPos = this.viewport[0][0];
+        }
+
+        double pos = this.viewport[0][0];
+
+        double step;
+        java.awt.geom.Point2D.Double point;
+        String label;
+        Rectangle2D bounds;
+        for(step = (this.viewport[1][0] - this.viewport[0][0]) / 10.0D; pos < this.viewport[1][0]; pos += step) {
+            point = this.translateXYtoPoint(pos, labelYPos);
+            label = formatter.format(pos);
+            bounds = this.labelsFont.getStringBounds(label, context);
+            canvas.drawString(label, (float)(point.getX() + 5.0D), (float)(point.getY() - bounds.getHeight()));
+        }
+
+        pos = this.viewport[1][1];
+
+        for(step = (this.viewport[0][1] - this.viewport[1][1]) / 10.0D; pos < this.viewport[0][1]; pos += step) {
+            point = this.translateXYtoPoint(labelXPos, pos);
+            label = formatter.format(pos);
+            bounds = this.labelsFont.getStringBounds(label, context);
+            canvas.drawString(label, (float)(point.getX() + 5.0D), (float)(point.getY() - bounds.getHeight()));
+        }
+
+        if (this.selectedMarker >= 0) {
+            point = this.translateXYtoPoint(((Double[])this.graphicsData.get(this.selectedMarker))[0], ((Double[])this.graphicsData.get(this.selectedMarker))[1]);
+            label = "X=" + formatter.format(((Double[])this.graphicsData.get(this.selectedMarker))[0]) + ", Y=" + formatter.format(((Double[])this.graphicsData.get(this.selectedMarker))[1]);
+            bounds = this.labelsFont.getStringBounds(label, context);
+            canvas.setColor(Color.BLUE);
+            canvas.drawString(label, (float)(point.getX() + 5.0D), (float)(point.getY() - bounds.getHeight()));
+        }
+
+    }
+
+    private void paintGrid(Graphics2D canvas) {
+        canvas.setStroke(this.gridStroke);
+        canvas.setColor(Color.GRAY);
+        double pos = this.viewport[0][0];
+
+        double step;
+        for(step = (this.viewport[1][0] - this.viewport[0][0]) / 10.0D; pos < this.viewport[1][0]; pos += step) {
+            canvas.draw(new java.awt.geom.Line2D.Double(this.translateXYtoPoint(pos, this.viewport[0][1]), this.translateXYtoPoint(pos, this.viewport[1][1])));
+        }
+
+        canvas.draw(new java.awt.geom.Line2D.Double(this.translateXYtoPoint(this.viewport[1][0], this.viewport[0][1]), this.translateXYtoPoint(this.viewport[1][0], this.viewport[1][1])));
+        pos = this.viewport[1][1];
+
+        for(step = (this.viewport[0][1] - this.viewport[1][1]) / 10.0D; pos < this.viewport[0][1]; pos += step) {
+            canvas.draw(new java.awt.geom.Line2D.Double(this.translateXYtoPoint(this.viewport[0][0], pos), this.translateXYtoPoint(this.viewport[1][0], pos)));
+        }
+
+        canvas.draw(new java.awt.geom.Line2D.Double(this.translateXYtoPoint(this.viewport[0][0], this.viewport[0][1]), this.translateXYtoPoint(this.viewport[1][0], this.viewport[0][1])));
+    }
+
+    private void paintAxis(Graphics2D canvas) {
+        canvas.setStroke(this.axisStroke);
+        canvas.setColor(Color.BLACK);
+        canvas.setFont(this.axisFont);
+        FontRenderContext context = canvas.getFontRenderContext();
+        Rectangle2D bounds;
+        java.awt.geom.Point2D.Double labelPos;
+        if (this.viewport[0][0] <= 0.0D && this.viewport[1][0] >= 0.0D) {
+            canvas.draw(new java.awt.geom.Line2D.Double(this.translateXYtoPoint(0.0D, this.viewport[0][1]), this.translateXYtoPoint(0.0D, this.viewport[1][1])));
+            canvas.draw(new java.awt.geom.Line2D.Double(this.translateXYtoPoint(-(this.viewport[1][0] - this.viewport[0][0]) * 0.0025D, this.viewport[0][1] - (this.viewport[0][1] - this.viewport[1][1]) * 0.015D), this.translateXYtoPoint(0.0D, this.viewport[0][1])));
+            canvas.draw(new java.awt.geom.Line2D.Double(this.translateXYtoPoint((this.viewport[1][0] - this.viewport[0][0]) * 0.0025D, this.viewport[0][1] - (this.viewport[0][1] - this.viewport[1][1]) * 0.015D), this.translateXYtoPoint(0.0D, this.viewport[0][1])));
+            bounds = this.axisFont.getStringBounds("y", context);
+            labelPos = this.translateXYtoPoint(0.0D, this.viewport[0][1]);
+            canvas.drawString("y", (float)labelPos.x + 10.0F, (float)(labelPos.y + bounds.getHeight() / 2.0D));
+        }
+
+        if (this.viewport[1][1] <= 0.0D && this.viewport[0][1] >= 0.0D) {
+            canvas.draw(new java.awt.geom.Line2D.Double(this.translateXYtoPoint(this.viewport[0][0], 0.0D), this.translateXYtoPoint(this.viewport[1][0], 0.0D)));
+            canvas.draw(new java.awt.geom.Line2D.Double(this.translateXYtoPoint(this.viewport[1][0] - (this.viewport[1][0] - this.viewport[0][0]) * 0.01D, (this.viewport[0][1] - this.viewport[1][1]) * 0.005D), this.translateXYtoPoint(this.viewport[1][0], 0.0D)));
+            canvas.draw(new java.awt.geom.Line2D.Double(this.translateXYtoPoint(this.viewport[1][0] - (this.viewport[1][0] - this.viewport[0][0]) * 0.01D, -(this.viewport[0][1] - this.viewport[1][1]) * 0.005D), this.translateXYtoPoint(this.viewport[1][0], 0.0D)));
+            bounds = this.axisFont.getStringBounds("x", context);
+            labelPos = this.translateXYtoPoint(this.viewport[1][0], 0.0D);
+            canvas.drawString("x", (float)(labelPos.x - bounds.getWidth() - 10.0D), (float)(labelPos.y - bounds.getHeight() / 2.0D));
+        }
+
+    }
+
+    protected java.awt.geom.Point2D.Double translateXYtoPoint(double x, double y) {
+        double deltaX = x - this.viewport[0][0];
+        double deltaY = this.viewport[0][1] - y;
+        return new java.awt.geom.Point2D.Double(deltaX * this.scaleX, deltaY * this.scaleY);
+    }
+
+    protected double[] translatePointToXY(int x, int y) {
+        return new double[]{this.viewport[0][0] + (double)x / this.scaleX, this.viewport[0][1] - (double)y / this.scaleY};
+    }
+
+    protected int findSelectedPoint(int x, int y) {
+        if (this.graphicsData == null) {
+            return -1;
+        } else {
+            int pos = 0;
+
+            for(Iterator var5 = this.graphicsData.iterator(); var5.hasNext(); ++pos) {
+                Double[] point = (Double[])var5.next();
+                java.awt.geom.Point2D.Double screenPoint = this.translateXYtoPoint(point[0], point[1]);
+                double distance = (screenPoint.getX() - (double)x) * (screenPoint.getX() - (double)x) + (screenPoint.getY() - (double)y) * (screenPoint.getY() - (double)y);
+                if (distance < 100.0D) {
+                    return pos;
+                }
+            }
+
+            return -1;
+        }
+    }
+
+    public void reset() {
+        this.displayGraphics(this.originalData);
+    }
+
+    public class MouseHandler extends MouseAdapter {
+        public MouseHandler() {
+        }
+
+        public void mouseClicked(MouseEvent ev) {
+            if (ev.getButton() == 3) {
+                if (GraphicsDisplay.this.undoHistory.size() > 0) {
+                    GraphicsDisplay.this.viewport = (double[][])GraphicsDisplay.this.undoHistory.get(GraphicsDisplay.this.undoHistory.size() - 1);
+                    GraphicsDisplay.this.undoHistory.remove(GraphicsDisplay.this.undoHistory.size() - 1);
+                } else {
+                    GraphicsDisplay.this.zoomToRegion(GraphicsDisplay.this.minX, GraphicsDisplay.this.maxY, GraphicsDisplay.this.maxX, GraphicsDisplay.this.minY);
+                }
+
+                GraphicsDisplay.this.repaint();
+            }
+
+        }
+
+        public void mousePressed(MouseEvent ev) {
+            if (ev.getButton() == 1) {
+                GraphicsDisplay.this.selectedMarker = GraphicsDisplay.this.findSelectedPoint(ev.getX(), ev.getY());
+                GraphicsDisplay.this.originalPoint = GraphicsDisplay.this.translatePointToXY(ev.getX(), ev.getY());
+                if (GraphicsDisplay.this.selectedMarker >= 0) {
+                    GraphicsDisplay.this.changeMode = true;
+                    GraphicsDisplay.this.setCursor(Cursor.getPredefinedCursor(8));
+                } else {
+                    GraphicsDisplay.this.scaleMode = true;
+                    GraphicsDisplay.this.setCursor(Cursor.getPredefinedCursor(5));
+                    GraphicsDisplay.this.selectionRect.setFrame((double)ev.getX(), (double)ev.getY(), 1.0D, 1.0D);
+                }
+
+            }
+        }
+
+        public void mouseReleased(MouseEvent ev) {
+            if (ev.getButton() == 1) {
+                GraphicsDisplay.this.setCursor(Cursor.getPredefinedCursor(0));
+                if (GraphicsDisplay.this.changeMode) {
+                    GraphicsDisplay.this.changeMode = false;
+                } else {
+                    GraphicsDisplay.this.scaleMode = false;
+                    double[] finalPoint = GraphicsDisplay.this.translatePointToXY(ev.getX(), ev.getY());
+                    GraphicsDisplay.this.undoHistory.add(GraphicsDisplay.this.viewport);
+                    GraphicsDisplay.this.viewport = new double[2][2];
+                    GraphicsDisplay.this.zoomToRegion(GraphicsDisplay.this.originalPoint[0], GraphicsDisplay.this.originalPoint[1], finalPoint[0], finalPoint[1]);
+                    GraphicsDisplay.this.repaint();
+                }
+
+            }
+        }
+    }
+
+    public class MouseMotionHandler implements MouseMotionListener {
+        public MouseMotionHandler() {
+        }
+
+        public void mouseMoved(MouseEvent ev) {
+            GraphicsDisplay.this.selectedMarker = GraphicsDisplay.this.findSelectedPoint(ev.getX(), ev.getY());
+            if (GraphicsDisplay.this.selectedMarker >= 0) {
+                GraphicsDisplay.this.setCursor(Cursor.getPredefinedCursor(8));
+            } else {
+                GraphicsDisplay.this.setCursor(Cursor.getPredefinedCursor(0));
+            }
+
+            GraphicsDisplay.this.repaint();
+        }
+
+        public void mouseDragged(MouseEvent ev) {
+            if (GraphicsDisplay.this.changeMode) {
+                double[] currentPoint = GraphicsDisplay.this.translatePointToXY(ev.getX(), ev.getY());
+                double newY = ((Double[])GraphicsDisplay.this.graphicsData.get(GraphicsDisplay.this.selectedMarker))[1] + (currentPoint[1] - ((Double[])GraphicsDisplay.this.graphicsData.get(GraphicsDisplay.this.selectedMarker))[1]);
+                if (newY > GraphicsDisplay.this.viewport[0][1]) {
+                    newY = GraphicsDisplay.this.viewport[0][1];
+                }
+
+                if (newY < GraphicsDisplay.this.viewport[1][1]) {
+                    newY = GraphicsDisplay.this.viewport[1][1];
+                }
+
+                ((Double[])GraphicsDisplay.this.graphicsData.get(GraphicsDisplay.this.selectedMarker))[1] = newY;
+                GraphicsDisplay.this.repaint();
+            } else {
+                double width = (double)ev.getX() - GraphicsDisplay.this.selectionRect.getX();
+                if (width < 5.0D) {
+                    width = 5.0D;
+                }
+
+                double height = (double)ev.getY() - GraphicsDisplay.this.selectionRect.getY();
+                if (height < 5.0D) {
+                    height = 5.0D;
+                }
+
+                GraphicsDisplay.this.selectionRect.setFrame(GraphicsDisplay.this.selectionRect.getX(), GraphicsDisplay.this.selectionRect.getY(), width, height);
+                GraphicsDisplay.this.repaint();
+            }
+
         }
     }
 }

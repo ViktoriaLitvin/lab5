@@ -1,90 +1,56 @@
 package bsu.rfe.java.group6.lab5.Litvinenko.varC;
 
-import javax.swing.*;
-import javax.swing.event.MenuEvent;
-import javax.swing.event.MenuListener;
-import java.awt.*;
+import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.io.*;
+import java.util.ArrayList;
+import javax.swing.AbstractAction;
+import javax.swing.Action;
+import javax.swing.JFileChooser;
+import javax.swing.JFrame;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 
 public class MainFrame extends JFrame {
-
-    private static final int WIDTH = 800;
-    private static final int HEIGHT = 600;
-
+    private static final int WIDTH = 700;
+    private static final int HEIGHT = 500;
     private JFileChooser fileChooser = null;
-
-    private JCheckBoxMenuItem showAxisMenuItem;
-    private JCheckBoxMenuItem showAxisGridMenuItem;
-    private JCheckBoxMenuItem showMarkersMenuItem;
-    private JCheckBoxMenuItem turnLeftMenuItem;
-
+    private JMenuItem resetGraphicsMenuItem;
     private GraphicsDisplay display = new GraphicsDisplay();
-
     private boolean fileLoaded = false;
 
     public MainFrame() {
-        super("Построение графиков функций на основе подготовленных файлов");
-        setSize(WIDTH, HEIGHT);
+        super("Обработка событий от мыши");
+        this.setSize(700, 500);
         Toolkit kit = Toolkit.getDefaultToolkit();
-        setLocation((kit.getScreenSize().width - WIDTH) / 2, (kit.getScreenSize().height - HEIGHT) / 2);
-        setExtendedState(MAXIMIZED_BOTH);
-        // menu bar
+        this.setLocation((kit.getScreenSize().width - 700) / 2, (kit.getScreenSize().height - 500) / 2);
+        this.setExtendedState(6);
         JMenuBar menuBar = new JMenuBar();
-        setJMenuBar(menuBar);
+        this.setJMenuBar(menuBar);
         JMenu fileMenu = new JMenu("Файл");
         menuBar.add(fileMenu);
-        Action openGraphicsAction = new AbstractAction("Открыть файл") {
-            @Override
-            public void actionPerformed(ActionEvent actionEvent) {
-                if (fileChooser == null) {
-                    fileChooser = new JFileChooser();
-                    fileChooser.setCurrentDirectory(new File("."));
+        Action openGraphicsAction = new AbstractAction("Открыть файл с графиком") {
+            public void actionPerformed(ActionEvent event) {
+                if (MainFrame.this.fileChooser == null) {
+                    MainFrame.this.fileChooser = new JFileChooser();
+                    MainFrame.this.fileChooser.setCurrentDirectory(new File("."));
                 }
-                if (fileChooser.showOpenDialog(MainFrame.this) == JFileChooser.APPROVE_OPTION) {
-                    openGraphics(fileChooser.getSelectedFile());
-                }
+
+                MainFrame.this.fileChooser.showOpenDialog(MainFrame.this);
+                MainFrame.this.openGraphics(MainFrame.this.fileChooser.getSelectedFile());
             }
         };
         fileMenu.add(openGraphicsAction);
-        JMenu graphicsMenu = new JMenu("График");
-        menuBar.add(graphicsMenu);
-        Action showAxisAction = new AbstractAction("Показывать оси координат") {
+        Action resetGraphicsAction = new AbstractAction("Отменить все изменения") {
             public void actionPerformed(ActionEvent event) {
-                display.setShowAxis(showAxisMenuItem.isSelected());
+                MainFrame.this.display.reset();
             }
         };
-        showAxisMenuItem = new JCheckBoxMenuItem(showAxisAction);
-        graphicsMenu.add(showAxisMenuItem);
-        showAxisMenuItem.setSelected(true);
-        Action showAxisGridAction = new AbstractAction("Показывать координатную сетку") {
-            @Override
-            public void actionPerformed(ActionEvent actionEvent) {
-                display.setShowAxisGrid(showAxisGridMenuItem.isSelected());
-            }
-        };
-        showAxisGridMenuItem = new JCheckBoxMenuItem(showAxisGridAction);
-        graphicsMenu.add(showAxisGridMenuItem);
-        showAxisGridMenuItem.setSelected(true);
-        Action showMarkersAction = new AbstractAction("Показывать маркеры точек") {
-            public void actionPerformed(ActionEvent event) {
-                display.setShowMarkers(showMarkersMenuItem.isSelected());
-            }
-        };
-        showMarkersMenuItem = new JCheckBoxMenuItem(showMarkersAction);
-        graphicsMenu.add(showMarkersMenuItem);
-        showMarkersMenuItem.setSelected(false);
-        Action turnLeftAction = new AbstractAction("Повернуть оси координат на 90 градусов") {
-            @Override
-            public void actionPerformed(ActionEvent actionEvent) {
-                display.setTurn(turnLeftMenuItem.isSelected());
-            }
-        };
-        turnLeftMenuItem = new JCheckBoxMenuItem(turnLeftAction);
-        graphicsMenu.add(turnLeftMenuItem);
-        turnLeftMenuItem.setSelected(false);
-        graphicsMenu.addMenuListener(new GraphicsMenuListener());
-        getContentPane().add(display, BorderLayout.CENTER);
+        this.resetGraphicsMenuItem = fileMenu.add(resetGraphicsAction);
+        this.resetGraphicsMenuItem.setEnabled(false);
+        this.getContentPane().add(this.display, "Center");
     }
 
     protected void openGraphics(File selectedFile) {
@@ -92,50 +58,28 @@ public class MainFrame extends JFrame {
             FileReader fileReader = new FileReader(selectedFile);
             BufferedReader reader = new BufferedReader(fileReader);
             int fileSize = Integer.parseInt(reader.readLine());
-            Double[][] graphicsData = new Double[fileSize][];
+            ArrayList graphicsData = new ArrayList(fileSize);
             for (int i = 0; i < fileSize; i++) {
                 String line = reader.readLine();
                 String[] parts = line.split(" ");
-                graphicsData[i] = new Double[] {Double.parseDouble(parts[0]), Double.parseDouble(parts[1])};
+                graphicsData.add(new Double[] {Double.parseDouble(parts[0]), Double.parseDouble(parts[1])});
             }
             if (fileSize > 0) {
-                fileLoaded = true;
-                display.showGraphics(graphicsData);
+                this.fileLoaded = true;
+                this.resetGraphicsMenuItem.setEnabled(true);
+                this.display.displayGraphics(graphicsData);
             }
-        } catch (FileNotFoundException ex) {
-            JOptionPane.showMessageDialog(MainFrame.this,
-                    "Указанный файл не найден", "Ошибка загрузки данных",
-                    JOptionPane.WARNING_MESSAGE);
-        } catch (IOException ex) {
-            JOptionPane.showMessageDialog(MainFrame.this,
-                    "Ошибка чтения координат точек из файла",
-                    "Ошибка загрузки данных", JOptionPane.WARNING_MESSAGE);
-        }
-    }
 
-    private class GraphicsMenuListener implements MenuListener {
-        public void menuSelected(MenuEvent e) {
-            showAxisMenuItem.setEnabled(fileLoaded);
-            showAxisGridMenuItem.setEnabled(fileLoaded);
-            showMarkersMenuItem.setEnabled(fileLoaded);
-            turnLeftMenuItem.setEnabled(fileLoaded);
-        }
-
-        @Override
-        public void menuDeselected(MenuEvent menuEvent) {
-
-        }
-
-        @Override
-        public void menuCanceled(MenuEvent menuEvent) {
-
+        } catch (FileNotFoundException var6) {
+            JOptionPane.showMessageDialog(this, "Указанный файл не найден", "Ошибка загрузки данных", 2);
+        } catch (IOException var7) {
+            JOptionPane.showMessageDialog(this, "Ошибка чтения координат точек из файла", "Ошибка загрузки данных", 2);
         }
     }
 
     public static void main(String[] args) {
         MainFrame frame = new MainFrame();
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setDefaultCloseOperation(3);
         frame.setVisible(true);
     }
-
 }
